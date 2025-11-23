@@ -1,0 +1,711 @@
+{
+  "name": "Auto Post – Photo & Reel",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1,
+                3,
+                5
+              ],
+              "triggerAtHour": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "75be149c-7316-4434-81bf-18e21de01076",
+      "name": "Photo Days"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                2,
+                4,
+                6
+              ],
+              "triggerAtHour": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "id": "0171bfba-bc92-4a0e-b3e2-3d809fd27596",
+      "name": "Reel Days"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c01ddeb4-9a00-4a12-af51-ed6e7246bd63",
+              "name": "post_type",
+              "value": "photo",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        0
+      ],
+      "id": "48f1bdbf-24af-467e-a5bc-fdf99e0b8083",
+      "name": "Mark Photo"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "22a6333c-05d8-4ba9-a09d-e9e10cacc7a6",
+              "name": "post_type",
+              "value": "reel",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        272,
+        160
+      ],
+      "id": "6fb893a4-6435-40a3-924b-7d527cd2c57d",
+      "name": "Mark Reel"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a social media content creator.\n\nIf post_type = \"photo\":\n  - Create a short caption for an Instagram & Facebook image post.\n  - No links.\n  - Keep under 2,000 characters.\n  - Create one detailed image prompt (no text in image) for AI image generation.\n  - Return JSON only: {\"type\":\"photo\",\"caption\":\"...\",\"image_prompt\":\"...\"}\n\nIf post_type = \"reel\":\n  - Create a caption for a short 8–12 second motivational vertical video.\n  - No links.\n  - Include a 4-scene storyboard, each one sentence describing what to show visually (no text on image).\n  - Return JSON only: {\"type\":\"reel\",\"caption\":\"...\",\"storyboard\":[\"scene1\",\"scene2\",\"scene3\",\"scene4\"]}\n\npost_type is: {{$json.post_type}}\nTopic: motivational productivity tips for students & creators.\n",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        592,
+        80
+      ],
+      "id": "3ed977b0-9a45-46b7-906e-6e34d73d259b",
+      "name": "Basic LLM Chain"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        320
+      ],
+      "id": "21ae8fec-e93c-41fa-9f40-600fa9a1f027",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.text || $json.data?.[0]?.content?.[0]?.text || $json.choices?.[0]?.message?.content || '';\nconst match = raw.match(/\\{[\\s\\S]*\\}$/);\nconst obj = JSON.parse(match ? match[0] : raw);\n\nif (obj.type === 'photo') {\n  return [{ post_type: 'photo', caption: obj.caption, image_prompt: obj.image_prompt }];\n} else {\n  return [{ post_type: 'reel', caption: obj.caption, storyboard: obj.storyboard }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        912,
+        80
+      ],
+      "id": "3a68482d-46a3-4066-9bee-09927fd27fca",
+      "name": "Parse Output"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6e12d287-640c-4353-bb38-b1e4a5657535",
+              "leftValue": "={{$json.post_type}}",
+              "rightValue": "photo",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        80
+      ],
+      "id": "535a004f-40f7-4762-b124-a437f936bc24",
+      "name": "IF Photo or Reel"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "prompt": "=Prompt: {{$json.image_prompt}}\n\nSize: 1080x1350\n\nNumber of images: 1",
+        "options": {
+          "returnImageUrls": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1328,
+        -32
+      ],
+      "id": "ffeccfbe-9bca-4157-9670-8a3991043d5a",
+      "name": "Generate an image",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{$env.IG_BUSINESS_ID}}/media_publish",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "image_url",
+              "value": "={{$json.data[0].url}}"
+            },
+            {
+              "name": "caption",
+              "value": "={{$node[\"Parse Output\"].json.caption}}"
+            },
+            {
+              "name": "access_token",
+              "value": "={{$env.FB_PAGE_ACCESS_TOKEN}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1632,
+        0
+      ],
+      "id": "446e08be-3f4d-479f-9c8f-a0fd2a7c488a",
+      "name": "Post to Instagram (Photo)"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "prompt": "=Prompt: {{$json.text || $json.frame}}\n\nNumber of images: 1",
+        "options": {
+          "size": "1024x1024"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1536,
+        256
+      ],
+      "id": "f27f14bd-9175-476e-a32b-4dc4d35572eb",
+      "name": "Generate Frame",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect Frames\nconst frames = items\n  .map(i => i.json?.data?.[0]?.url)\n  .filter(Boolean);\n\nif (!frames.length) {\n  throw new Error('No frame URLs found from previous step.');\n}\n\nreturn [{ json: { frames } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        256
+      ],
+      "id": "add7653a-3171-41a7-b2bd-0c0246d7860e",
+      "name": "Collect Frames"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.shotstack.io/stage/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "LYFC2Wwftm5UZg2bsHkmO3HIyU3AZQ1LIDWi3qcW"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2192,
+        256
+      ],
+      "id": "d9da9259-7d2e-4f12-a48b-f3b7a1cecbb6",
+      "name": "Create Video with Shotstack"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        256
+      ],
+      "id": "be923e4a-f5d8-4acd-8259-f2d540b98582",
+      "name": "Wait",
+      "webhookId": "d5e82478-e7e9-49d1-9fc1-384bcd56df13"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.shotstack.io/stage/render/{{$json.response.id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "LYFC2Wwftm5UZg2bsHkmO3HIyU3AZQ1LIDWi3qcW"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2608,
+        256
+      ],
+      "id": "7c3b37f6-b16a-4b5f-b665-3cd19234cba3",
+      "name": "Check Video Status"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dcd4e011-419a-45bd-a90d-c58177eb7446",
+              "leftValue": "={{$json.response.status}}",
+              "rightValue": "FINISHED",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2816,
+        256
+      ],
+      "id": "6899a9bb-3290-4e0b-a17b-3d6b2cea0993",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v23.0",
+        "node": "809007578965851",
+        "edge": "photos",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "url",
+                "value": "={{$node[\"Generate an image\"].json.url}}"
+              },
+              {
+                "name": "caption",
+                "value": "={{$node[\"Parse Output\"].json.caption}}"
+              },
+              {
+                "name": "access_token",
+                "value": "EAALFdf7ikDkBPg8ZCdax273DZAiz0YJmze9xD0ZCHv8pXC8ja6Wz8hoCGcJkgxesuV9mcZCP27cPcZBMiYcHrIiTx5xkVjatZAr0XCrUhSMyFyoOYXjNaT17GsSAu1NL2n2jsY0qCrS0WcSYKPm2dKg7HF1X3uQSWOr05z64LiQ1miXg2R7YAd5XhLCDQcTamoU1t1yAtCLPpDLg15k8J8XAZBqxlUvvRrZBPV0AhdwZD"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        1632,
+        -208
+      ],
+      "id": "bea5fc17-79d6-44cf-bfe9-e04653353915",
+      "name": "Facebook Graph API",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "Sz3IRuVbs4VXdkeZ",
+          "name": "Facebook Graph account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v23.0",
+        "node": "809007578965851",
+        "edge": "photos",
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "url",
+                "value": "={{$node[\"Generate an image\"].json.url}}"
+              },
+              {
+                "name": "caption",
+                "value": "={{$node[\"Parse Output\"].json.caption}}"
+              },
+              {
+                "name": "access_token",
+                "value": "EAALFdf7ikDkBPnUTRNglShLDfTm0VPmrnGm6uLZCfZAPL5vN34KVptteTxgj9lwUDWQ7V5tTillN6SIpMmJrj9snck58BqWtpWPNi36axqPEtWO7ztcyVoUmlPSxQb67YSZAa5Vcw38sHloR3rI2SGZCmnPUeMKyZAu1ZAcCqRAXcyO6xj7w0McZBZBNv3nveZCz6Olfn74qn5QuuTEzrbOLnIHvlzEZAjnMVjCbt2DGoWngIZD"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [
+        3040,
+        176
+      ],
+      "id": "0fae4861-e855-4feb-bc33-db44643af815",
+      "name": "Facebook Graph API2",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "Sz3IRuVbs4VXdkeZ",
+          "name": "Facebook Graph account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Accept either an array (already split) or a string (split by newlines/pipes)\nconst raw = $json.storyboard;\n\nlet parts;\nif (Array.isArray(raw)) {\n  parts = raw;\n} else if (typeof raw === 'string') {\n  parts = raw.split(/\\r?\\n|\\|/).map(s => s.trim()).filter(Boolean);\n} else {\n  parts = [];\n}\n\nreturn parts.map(text => ({ json: { frame: text } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        256
+      ],
+      "id": "1a7faa02-c850-4d3b-b222-06862ccc5943",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expect $json.frames = ['https://.../img1.png', 'https://.../img2.png', ...]\nconst frames = $json.frames || [];\n\nconst clips = frames.map((url, i) => ({\n  asset: { type: 'image', src: url },\n  start: i * 2.5,\n  length: 2.5,\n  fit: 'cover',\n  ...(i > 0 ? { transition: { in: 'fade' } } : {})\n}));\n\nreturn [{\n  json: {\n    timeline: {\n      background: '#000000',\n      tracks: [{ clips }]\n    },\n    output: {\n      format: 'mp4',\n      resolution: '1080x1920',\n      fps: 30\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1968,
+        256
+      ],
+      "id": "2a738106-105f-487a-8dc2-d6420fe11173",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Photo Days": {
+      "main": [
+        [
+          {
+            "node": "Mark Photo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Photo": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reel Days": {
+      "main": [
+        [
+          {
+            "node": "Mark Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Reel": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Parse Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Output": {
+      "main": [
+        [
+          {
+            "node": "IF Photo or Reel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Photo or Reel": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Post to Instagram (Photo)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Facebook Graph API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Frame": {
+      "main": [
+        [
+          {
+            "node": "Collect Frames",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Frames": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Video with Shotstack": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Check Video Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Video Status": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Facebook Graph API2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Facebook Graph API": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Generate Frame",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Create Video with Shotstack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "88a71180-4a47-45ff-9921-0d49e9d868c1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f49f22d469b6e09b2df4cdcefc97cb4c1624176082156fb996b516c29790274"
+  },
+  "id": "DA9d65llisOed9Zo",
+  "tags": []
+}

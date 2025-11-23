@@ -1,0 +1,376 @@
+{
+  "name": "Linkedln_post",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                6
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -320,
+        -192
+      ],
+      "id": "5b29cdb8-af59-49a5-8825-3cfdab1bada1",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3502eda7-137d-4b9a-a96a-11ac93152fdb",
+              "name": "tone example 1",
+              "value": "Professional",
+              "type": "string"
+            },
+            {
+              "id": "a525b1d5-f90d-4b6f-ac26-89e38036bf50",
+              "name": "tone example 2",
+              "value": "Friendly",
+              "type": "string"
+            },
+            {
+              "id": "ebc7d7e1-a1d5-443c-b2c0-1315a08acebf",
+              "name": "tone example 3",
+              "value": "Energetic",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -96,
+        80
+      ],
+      "id": "72c55707-9e0f-4fee-8293-8f3e08461161",
+      "name": "Tone"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "2afc71f3-46e6-4b64-9893-b6451c00c3d5",
+              "name": "LinkedIn Page Name",
+              "value": "Smart Bot Automation",
+              "type": "string"
+            },
+            {
+              "id": "cb287f52-4b52-498b-9c74-af9933be286e",
+              "name": "Topic 1",
+              "value": "\"How AI/ML is Transforming Data Analytics in 2025",
+              "type": "string"
+            },
+            {
+              "id": "a452d4a4-9804-40c2-a036-35038c6e83a4",
+              "name": "Topic 2",
+              "value": "Top 5 Skills Every Data Scientist Needs to Stay Ahead",
+              "type": "string"
+            },
+            {
+              "id": "ef379e0e-7543-4820-83cb-6d2d3af96ccf",
+              "name": "Topic 3",
+              "value": "Why Data Cleaning is 80% of the Work in Analytics",
+              "type": "string"
+            },
+            {
+              "id": "6de9b6c0-6c64-44a6-8cd6-64ec9399f810",
+              "name": "Topic 4",
+              "value": "From Raw Data to Business Insights: The Power of Machine Learning",
+              "type": "string"
+            },
+            {
+              "id": "00fc6243-1651-4761-9e72-e501ba4af83a",
+              "name": "Topic 5",
+              "value": "How Generative AI is Reshaping the Future of Data Science",
+              "type": "string"
+            },
+            {
+              "id": "675b14c0-a667-4407-861c-652433f46606",
+              "name": "Topic 6",
+              "value": "Data-Driven Decision Making: Key Trends Businesses Can’t Ignore",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -384,
+        96
+      ],
+      "id": "9d078a45-d3c3-4537-8caf-6ed94b205b4b",
+      "name": "Topics"
+    },
+    {
+      "parameters": {
+        "jsCode": "const topics = [\n  \"How AI/ML is Transforming Data Analytics in 2025\",\n  \"Top 5 Skills Every Data Scientist Needs to Stay Ahead\",\n  \"Why Data Cleaning is 80% of the Work in Analytics\",\n  \"From Raw Data to Business Insights: The Power of Machine Learning\",\n  \"How Generative AI is Reshaping the Future of Data Science\",\n  \"Data-Driven Decision Making: Key Trends Businesses Can’t Ignore\"\n];\n\nconst tones = [\"Professional\", \"Friendly\", \"Energetic\"];\n\nfunction getWeekNumber(d) {\n  const start = new Date(d.getFullYear(), 0, 1);\n  return Math.floor(((d - start) / 86400000 + start.getDay() + 1) / 7);\n}\n\nconst week = getWeekNumber(new Date());\nconst chosenTopic = topics[week % topics.length];\nconst chosenTone = tones[Math.floor(Math.random() * tones.length)];\n\nreturn [{ json: { \"Topic Rotator\": chosenTopic, \"Tone\": chosenTone } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -176
+      ],
+      "id": "e95651ed-efe9-4feb-b114-322c1e6075d9",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert LinkedIn content strategist.  \nWrite a detailed LinkedIn post on the topic: \"{{ $json[\"Topic Rotator\"] }}\".  \nUse a {{ $json[\"Tone\"] }} tone.  \n\nGuidelines for the post:\n- Write at least 5–7 engaging paragraphs.  \n- Start with a hook (a relatable problem, a question, or a surprising fact).  \n- Explain the topic with depth, including real-world examples, insights, or lessons.  \n- Use clear structure: introduction, main insights, and conclusion.  \n- Always include emojis to make the post visually appealing. \n- Adapt the style based on the given tone:  \n  Professional → More structured, limited emojis.  \n  Friendly → Conversational, moderate emojis.  \n  Energetic → Exciting, high-energy, more emojis.\n- Add a call-to-action at the end (e.g., invite readers to comment, share experiences, or ask questions).  \n- End with 5–7 professional hashtags.  \n\nMake the post long enough to feel like a mini-article but still conversational.\n",
+              "role": "system"
+            },
+            {
+              "content": "=Write a LinkedIn post on the topic: \"{{ $json[\"Topic Rotator\"] }}\".  \nUse a {{ $json[\"Tone\"] }} tone.  \n\nRequirements:  \n- Post length: 1200–1800 characters (5–7 engaging paragraphs).  \n- Start with a hook using 1–2 emojis.  \n- Add storytelling, real-world examples, and insights.  \n- Use bullet points or numbered lists when helpful, with emojis as markers (✅, 🔑, 🚀, etc.).  \n- Keep the flow smooth and professional, but avoid being robotic.  \n- End with a thought-provoking call-to-action (invite comments/shares).  \n- Add 5–7 relevant hashtags at the end with emojis sprinkled in the text.  \n\nDo not output instructions, only return the final LinkedIn post.\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        336,
+        96
+      ],
+      "id": "331c534a-3af0-48ea-beb5-4d4827eaba59",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get input safely\nconst raw = $input.all()[0]?.json || {};\n\n// Extract AI-generated text\nlet inputText = \"\";\nif (raw.message && Array.isArray(raw.message) && raw.message[0]?.content) {\n  inputText = raw.message[0].content;\n} else if (raw.message?.content) {\n  inputText = raw.message.content;\n} else if (raw.choices?.[0]?.message?.content) {\n  inputText = raw.choices[0].message.content;\n} else if (raw.choices?.[0]?.text) {\n  inputText = raw.choices[0].text;\n} else if (raw.text) {\n  inputText = raw.text;\n} else if (raw.content) {\n  inputText = raw.content;\n}\ninputText = inputText || \"\";\n\n// Clean text (preserve readable structure)\nconst cleanedText = inputText\n  .replace(/\\*\\*/g, \"\")\n  .replace(/(^|\\n)[\\-\\•\\*\\–\\u2022]\\s*/g, \"$1\")\n  .replace(/#{2,}\\s*/g, \"\")\n  .replace(/\\[(.*?)\\]\\((?:https?:\\/\\/|mailto:)[^\\)]+\\)/g, \"$1\")\n  .replace(/\\r\\n/g, \"\\n\")\n  .replace(/\\n{3,}/g, \"\\n\\n\")\n  .trim();\n\n// Extract potential keywords from text\nconst words = cleanedText\n  .replace(/[^\\w\\s]/g, \"\") // remove punctuation\n  .split(/\\s+/)\n  .filter(w => w.length > 3 && /^[A-Za-z]+$/.test(w)) // only letters, length > 3\n  .map(w => w.toLowerCase());\n\n// Count frequency\nconst freq = {};\nfor (const w of words) freq[w] = (freq[w] || 0) + 1;\n\n// Sort by frequency and uniqueness\nconst sorted = Object.entries(freq)\n  .sort((a, b) => b[1] - a[1])\n  .map(([word]) => word);\n\n// Filter out common filler words\nconst stopWords = new Set([\n  \"this\",\"that\",\"with\",\"from\",\"your\",\"about\",\"their\",\"have\",\"more\",\n  \"will\",\"into\",\"when\",\"there\",\"some\",\"which\",\"been\",\"than\",\"then\",\n  \"what\",\"were\",\"also\",\"they\",\"them\",\"like\",\"just\",\"over\",\"because\",\n  \"where\",\"could\",\"while\",\"every\",\"would\",\"after\",\"before\",\"through\"\n]);\nconst keywords = sorted.filter(w => !stopWords.has(w));\n\n// Pick top 5 relevant words\nconst topKeywords = keywords.slice(0, 5);\n\n// Convert to hashtags\nconst autoTags = topKeywords.map(w => `#${w.charAt(0).toUpperCase() + w.slice(1)}`);\n\n// Append hashtags at the end\nlet finalText = cleanedText;\nif (autoTags.length > 0) {\n  finalText += `\\n\\n${autoTags.join(\" \")}`;\n}\n\n// Truncate safely for LinkedIn\nfinalText = finalText.substring(0, 3000);\n\nreturn [\n  {\n    json: {\n      LinkedIn_Post: finalText\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        -176
+      ],
+      "id": "bd662537-4ef8-4b6b-90ac-d2c12d2ca484",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "prompt": "={{ $json[\"Image_Prompt\"] }}\n",
+        "options": {
+          "dalleQuality": "standard",
+          "style": "vivid"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1008,
+        112
+      ],
+      "id": "8e758e58-7765-4090-ac27-2f6644042725",
+      "name": "Generate an image",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build DALL·E prompt dynamically from Code1 output (LinkedIn_Post) and Topic Rotator\nconst data = $input.all()[0]?.json || {};\nconst topic = (data[\"Topic Rotator\"] || \"\").replace(/[\"']/g, \"\");\nconst post = data[\"LinkedIn_Post\"] || \"\";\nconst hook = (post.split(\"\\n\").find(line => line.trim().length > 10) || post.slice(0,150)).replace(/[\"']/g, \"\");\n\n// Long, detailed photorealistic prompt for DALL·E\nconst prompt = `Create a high-resolution, photorealistic LinkedIn banner (output ~1200x627, cinematic 4K) that visually represents the topic: \"${topic}\".\n\nUse the post hook as context: \"${hook}\"\n\nScene / composition:\n- Modern office workspace with a laptop and a large monitor showing an analytics dashboard (stylized charts, line and bar graphs, subtle AI/cloud icons).\n- Focal point: screen at left/center (rule of thirds) with clear negative space on the right for text overlay.\n- Foreground: neat desk items (coffee, smartphone). Background: collaborators blurred or non-identifiable.\n\nStyle / lighting / camera:\n- Photorealistic, natural warm lighting, shallow depth of field (bokeh), 50mm, f/1.8, cinematic framing.\n- Color palette: navy, teal, gray, white accents; polished and professional.\n\nConstraints:\n- No logos, no real identifiable faces, no text inside the image, no watermarks.\n\nReturn the image as a high-quality PNG suitable for LinkedIn.`;\n\nreturn [{ json: { Image_Prompt: prompt } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        -176
+      ],
+      "id": "16d54caf-b66f-430c-9257-81f8b4d51826",
+      "name": "Build Image Prompt"
+    },
+    {
+      "parameters": {
+        "person": "-JwVZryReq",
+        "text": "={{$node[\"Code1\"].json[\"LinkedIn_Post\"]}}",
+        "shareMediaCategory": "IMAGE",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        128
+      ],
+      "id": "202ed044-c9c4-4c33-b5c6-19ec8b3c5117",
+      "name": "Create a post",
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "yLAZQWqMlYbMImWf",
+          "name": "LinkedIn account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "generate image for the generated text\n",
+        "height": 560,
+        "width": 288
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        880,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "30a77249-6b2e-4349-94b3-a59d0537a6c1",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "generate texts based on topic and tone for the post \n",
+        "height": 544,
+        "width": 688,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        112,
+        -272
+      ],
+      "typeVersion": 1,
+      "id": "954b9638-b118-4821-90c8-40b62dad94b9",
+      "name": "Sticky Note1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Topics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tone": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Topics": {
+      "main": [
+        [
+          {
+            "node": "Tone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Build Image Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Create a post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Image Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "60236555-888d-4b22-a338-8af31c1aaae1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f49f22d469b6e09b2df4cdcefc97cb4c1624176082156fb996b516c29790274"
+  },
+  "id": "nAmfhmN8YHzvCkig",
+  "tags": []
+}
