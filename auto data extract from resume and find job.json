@@ -1,0 +1,1144 @@
+{
+  "name": "auto data extract from resume and find job",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": [
+          "POST"
+        ],
+        "path": "resume-auto-apply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -16,
+        -240
+      ],
+      "id": "4b4a3205-de2c-4954-b695-bb6a13a6a5ed",
+      "name": "Webhook",
+      "webhookId": "fe05280c-c97d-435a-bea4-90c11cb0e1fc",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Webhook receives resume + applicantEmail + tone + consent. Returns immediate JSON response.\n"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Function node: Normalize extracted resume text\n\n// \"items\" is automatically provided to the Function node\nconst extracted = (items[0].json.text) ? items[0].json.text : '';\n\n// Clean whitespace/newlines and collapse repeated spaces\nlet text = extracted\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/\\t/g, ' ')\n  .replace(/[^\\S\\n]+/g, ' ')\n  .trim();\n\n// Flag if OCR may be needed (very short or empty)\nconst needsOcr = text.length < 40;\n\nreturn [{\n  json: {\n    resumeText: text,\n    needsOcr\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        -640
+      ],
+      "id": "d48d96d8-3edf-47da-bff0-1a061a32c2d8",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "resume",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        176,
+        -448
+      ],
+      "id": "b9589758-2fbd-49d9-998e-a0ae4530bf12",
+      "name": "Extract from File",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an extractor that reads a resume / plain text and returns ONLY valid JSON (no extra commentary).\nOutput MUST be a single JSON object that contains these keys (use arrays where indicated). If a field is missing, return null or an empty array.\n\nRequired JSON shape:\n{\n  \"name\": string | null,\n  \"primary_title\": string | null,\n  \"seniority\": \"seniority\": string | null, (must be one of: \"Intern\", \"Entry-level\", \"Mid-level\", \"Senior\", \"Lead\", or null if impossible to infer),\n  \"years_experience\": number | null,\n  \"contact_email\": string | null,\n  \"phone\": string | null,\n  \"linkedin\": string | null,\n  \"github\": string | null,\n  \"education\": [ \n    { \"degree\": string | null, \"institution\": string | null, \"start_year\": string | null, \"end_year\": string | null, \"notes\": string | null }\n  ],\n  \"experience\": [\n    { \"company\": string | null, \"position\": string | null, \"start\": string | null, \"end\": string | null, \"summary\": string | null }\n  ],\n  \"certifications\": [ string ],\n  \"projects\": [\n    { \"title\": string | null, \"description\": string | null, \"link\": string | null }\n  ],\n  \"raw_skills\": [ string ],\n  \"top_skills\": [ string ],\n  \"career_summary\": string | null,\n  \"search_keywords\": [ string ],\n  \"raw_text\": string | null\n}\n\nRules:\n- Return valid JSON only. No markdown, no backticks, no extra text.\n- Prefer structured fields (arrays) where possible. For dates/years, string is fine (e.g., \"2020\", \"Jan 2019\").\n- For skills return plain tokens (no punctuation), split into arrays.\n- For education/experience, if only a line exists, put best-effort values and leave empty/null for unknowns.\n- If you cannot find a field, put null or empty array.\n- Make `top_skills` the small, highest-confidence subset (3–12 items). `raw_skills` can be longer.\n- `search_keywords` should include domain keywords + top_skills + title words.\n- `raw_text` should contain the full extracted text (or first 2000 chars) as a fallback.\n\nResume text:\n{{$json[\"resumeText\"]}}\n"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        544,
+        -448
+      ],
+      "id": "77e92edd-ab9a-49de-b515-267defe20f88",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "Go3EsyJkdAgIIXEm",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node (JavaScript). Mode = \"Run Once for All Items\"\nreturn items.map(item => {\n  const p = item.json || {};\n\n  // Helper: pull model/assistant text from common places\n  const getModelText = (p) => {\n    if (p.message && p.message.content) return p.message.content;\n    if (p.content) return p.content;\n    if (p.choices && p.choices[0] && (p.choices[0].message || p.choices[0])) {\n      // supports both OpenAI choices[].message.content and older choices[].text\n      return (p.choices[0].message && p.choices[0].message.content) || p.choices[0].text || '';\n    }\n    return '';\n  };\n\n  const rawContent = getModelText(p) || p.text || p.resumeText || '';\n\n  // Try parse JSON from model output (model prompt should return JSON only)\n  let parsed = null;\n  if (typeof rawContent === 'string') {\n    // If it looks like pure JSON (starts with { or [), try parse; otherwise attempt to extract JSON substring\n    const firstBrace = rawContent.indexOf('{');\n    const lastBrace = rawContent.lastIndexOf('}');\n    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {\n      const candidate = rawContent.slice(firstBrace, lastBrace + 1);\n      try { parsed = JSON.parse(candidate); }\n      catch (e) { parsed = null; }\n    }\n  } else if (typeof rawContent === 'object' && rawContent !== null) {\n    parsed = rawContent;\n  }\n\n  // Prefer parsed JSON from model, else fallback to fields extracted earlier\n  const src = parsed || p || {};\n\n  // Utility: normalize single skill phrase\n  const normalizeSkill = s => {\n    if (!s && s !== 0) return null;\n    let str = String(s).trim();\n    // collapse whitespace and remove weird punctuation\n    str = str.replace(/\\s+/g, ' ')\n             .replace(/[“”\"']/g, '')\n             .replace(/[\\u2018-\\u201F]/g, '')\n             .replace(/\\s*\\(.*?\\)\\s*/g, '') // drop parenthesis content\n             .replace(/[,+;|]/g, ','); // unify delimiters\n    // split if it's multiple in one cell\n    if (str.indexOf(',') !== -1) {\n      return str.split(',').map(x => x.trim()).filter(Boolean).map(x => x[0].toUpperCase() + x.slice(1)).join(' / ');\n    }\n    // Title case first letter\n    return str.length ? (str[0].toUpperCase() + str.slice(1)) : null;\n  };\n\n  // Normalize array candidate values\n  const toArray = v => {\n    if (!v) return [];\n    if (Array.isArray(v)) return v.flatMap(x => toArray(x));\n    if (typeof v === 'string') {\n      // split on newline or comma or semicolon or pipe\n      return v.split(/[\\n,;|]+/).map(s => s.trim()).filter(Boolean);\n    }\n    return [String(v).trim()];\n  };\n\n  // Collect raw & top skills from multiple possible keys\n  const rawSkillsCandidate = src.raw_skills || src.rawSkills || src.skills || src.raw || src.text || [];\n  const topSkillsCandidate = src.top_skills || src.topSkills || src.topSkillsCandidate || [];\n\n  const rawList = toArray(rawSkillsCandidate).map(normalizeSkill).filter(Boolean);\n  const topList = toArray(topSkillsCandidate).map(normalizeSkill).filter(Boolean);\n\n  // If topList empty, derive from rawList (first N) or try a heuristic from career_summary/text\n  if (topList.length === 0 && rawList.length > 0) {\n    for (let i=0;i<Math.min(12, rawList.length);i++) topList.push(rawList[i]);\n  } else if (topList.length === 0 && src.career_summary) {\n    // naive extraction: take capitalized tokens that look like skills (fallback)\n    const guess = (src.career_summary || '').match(/\\b[A-Za-z+#\\.\\-]{2,}\\b/g) || [];\n    const tokens = guess.filter(t => /[A-Za-z]/.test(t) && t.length <= 30 && !/^(the|and|or|with|that|from|for|to)$/i.test(t));\n    for (let t of tokens.slice(0,12)) topList.push(normalizeSkill(t));\n  }\n\n  // dedupe keep order\n  const dedupeKeepOrder = arr => {\n    const set = new Set();\n    const out = [];\n    for (const x of arr) {\n      if (!x) continue;\n      const key = x.toLowerCase();\n      if (!set.has(key)) { set.add(key); out.push(x); }\n    }\n    return out;\n  };\n\n  const raw_skills = dedupeKeepOrder(rawList);\n  const top_skills = dedupeKeepOrder(topList);\n\n  // Contact extraction fallback regexes\n  const contact_email = src.contact_email || src.email || src.contactEmail ||\n    (typeof src.raw_text === 'string' && (src.raw_text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i) || [])[0]) ||\n    (typeof src.text === 'string' && (src.text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i) || [])[0]) ||\n    null;\n\n  const phone = src.phone || src.phone_number || (typeof src.raw_text === 'string' && (src.raw_text.match(/(\\+?\\d[\\d\\-\\s]{6,}\\d)/) || [])[0]) || null;\n\n  // socials\n// Try to capture LinkedIn URL\n  // Education: model should return array objects, but fallback to heuristics (simple)\n  const education = Array.isArray(src.education) ? src.education.map(e => ({\n      degree: e.degree || e.title || null,\n      institution: e.institution || e.school || null,\n      start_year: e.start_year || e.from || null,\n      end_year: e.end_year || e.to || null,\n      notes: e.notes || null\n    })) : [];\n\n  // Experience: array of objects from model\n  const experience = Array.isArray(src.experience) ? src.experience.map(e => ({\n      company: e.company || e.employer || null,\n      position: e.position || e.role || null,\n      start: e.start || e.from || null,\n      end: e.end || e.to || null,\n      summary: e.summary || e.description || null\n    })) : [];\n\n  // Certifications & Projects\n  const certifications = Array.isArray(src.certifications) ? src.certifications.filter(Boolean) : toArray(src.certifications || src.certs || src.cert).filter(Boolean);\n  const projects = Array.isArray(src.projects) ? src.projects.map(pj => ({\n      title: pj.title || pj.name || null,\n      description: pj.description || pj.summary || null,\n      link: pj.link || pj.url || null\n    })) : [];\n\n  // Primary metadata & summary\n  const primary_title = src.primary_title || src.title || src.role || null;\n  const seniority = src.seniority || src.level || null;\n  const years_experience = (typeof src.years_experience === 'number') ? src.years_experience : (parseInt((src.years_experience || src.years || '0').toString().replace(/[^\\d]/g,''),10) || 0);\n  const career_summary = src.career_summary || src.summary || src.objective || null;\n  const raw_text = (src.raw_text || src.text || rawContent || '').toString().slice(0, 2000);\n\n  const search_keywords = dedupeKeepOrder([\n    primary_title,\n    ...top_skills.slice(0, 12),\n    ...(Array.isArray(src.search_keywords) ? src.search_keywords : toArray(src.search_keywords || []))\n  ].filter(Boolean));\n\n  const confidence = Math.min(0.98, 0.2 + Math.min(0.6, (top_skills.length * 0.08)));\n\n  // best-effort name: model-provided else try heuristics (first line or email local-part)\n  let name = src.name || src.full_name || null;\n  if (!name) {\n    if (typeof raw_text === 'string') {\n      const firstLine = raw_text.split(/\\r?\\n/)[0] || '';\n      if (firstLine && firstLine.split(' ').length <= 4 && /[A-Za-z]/.test(firstLine)) {\n        name = firstLine.trim();\n      }\n    }\n    if (!name && contact_email) {\n      name = contact_email.split('@')[0].replace(/[._0-9]/g,' ').split(' ').map(t => t && (t[0].toUpperCase()+t.slice(1))).join(' ').trim();\n    }\n  }\n\n  // standardize phone, email lower-case for email\n  const contactEmailNormalized = contact_email ? contact_email.toLowerCase() : null;\n\n  // final returned object (fields to map into Google Sheets)\n  return {\n    json: {\n      name: name || null,\n      primary_title: primary_title || null,\n      seniority: seniority || null,\n      years_experience: Number(years_experience) || 0,\n      contact_email: contactEmailNormalized,\n      phone: phone || null,\n      education: education,\n      experience: experience,\n      certifications: certifications,\n      projects: projects,\n      raw_skills: raw_skills,\n      top_skills: top_skills,\n      career_summary: career_summary,\n      search_keywords: search_keywords,\n      confidence,\n      raw_text_snippet: raw_text,\n      generated_at: (new Date()).toISOString(),\n      // keep original node content for debugging\n      source: p,\n      original_model_output: rawContent\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        -624
+      ],
+      "id": "4b41bcb9-9f64-406b-baab-3efac1225eb4",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1fI9r2he0guagSBdMlXOkmk9juG6y8ePgZRbMmNIgdac",
+          "mode": "list",
+          "cachedResultName": "company detail",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fI9r2he0guagSBdMlXOkmk9juG6y8ePgZRbMmNIgdac/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1fI9r2he0guagSBdMlXOkmk9juG6y8ePgZRbMmNIgdac/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{$json[\"contact_email\"]}}",
+            "Phone": "={{$json[\"phone\"]}}",
+            "Title": "={{$json[\"primary_title\"]}}",
+            "Seniority": "={{$json[\"seniority\"]}}",
+            "Experience": "={{$json[\"years_experience\"]}}",
+            "Keywords": "={{ $json[\"search_keywords\"].join(\", \") }}",
+            "Summary": "={{$json[\"career_summary\"]}}",
+            "Skills": "={{ $json[\"raw_skills\"].join(\", \") }}",
+            "Generated At": "={{ $json[\"generated_at\"] || new Date().toISOString() }}\n",
+            "Name": "={{ $json[\"name\"] }}",
+            "Education": "={{ $json[\"education\"] && $json[\"education\"].length ? $json[\"education\"].map(e => (e.degree || \"\") + \" @ \" + (e.institution || \"\") + \" (\" + (e.start_year || \"\") + \"-\" + (e.end_year || \"\") + \")\").join(\"; \") : \"\" }}\n",
+            "Work Experience": "={{ $json[\"experience\"] && $json[\"experience\"].length ? $json[\"experience\"].map(e => (e.position || \"\") + \" at \" + (e.company || \"\") + \" (\" + (e.start || \"\") + \"-\" + (e.end || \"\") + \")\").join(\"; \") : \"\" }}\n",
+            "Certifications ": "={{ $json[\"certifications\"] && $json[\"certifications\"].length ? $json[\"certifications\"].join(\", \") : \"\" }}\n",
+            "Projects": "={{ $json[\"projects\"] && $json[\"projects\"].length ? $json[\"projects\"].map(p => (p.title || \"\") + \" - \" + (p.description || \"\")).join(\"; \") : \"\" }}\n",
+            "Confidence": "={{ $json[\"confidence\"] || \"\" }}"
+          },
+          "matchingColumns": [
+            "Name"
+          ],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Seniority",
+              "displayName": "Seniority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Experience",
+              "displayName": "Experience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Skills",
+              "displayName": "Skills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Keywords",
+              "displayName": "Keywords",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Education",
+              "displayName": "Education",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Work Experience",
+              "displayName": "Work Experience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Certifications ",
+              "displayName": "Certifications ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Projects",
+              "displayName": "Projects",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Generated At",
+              "displayName": "Generated At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1568,
+        -240
+      ],
+      "id": "883b82da-c06a-4b99-b127-8ffc659d945c",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "XzXOquDnLHbknnhg",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8e9aa887-8f14-4f38-99a3-4ba18345fc6f",
+              "leftValue": "={{ $json[\"confidence\"] }}",
+              "rightValue": 0.5,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1072,
+        -416
+      ],
+      "id": "5573c15b-3d9f-45db-b531-d107b511e911",
+      "name": "if"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1AS4qhKisnh1ct3thAz-mj7M9uS0fyLQPRGvM0eoeOq4",
+          "mode": "list",
+          "cachedResultName": "Review",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AS4qhKisnh1ct3thAz-mj7M9uS0fyLQPRGvM0eoeOq4/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1AS4qhKisnh1ct3thAz-mj7M9uS0fyLQPRGvM0eoeOq4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json[\"name\"] || \"\" }}",
+            "Email": "={{ ($json[\"contact_email\"] || \"\").toLowerCase() }}",
+            "Title": "={{ $json[\"primary_title\"] || \"\" }}",
+            "Phone": "={{ $json[\"phone\"] || \"\" }}",
+            "Seniority": "={{ $json[\"seniority\"] || \"\" }}",
+            "Education": "={{ ($json[\"education\"] || []).map(e => (e.degree||'').trim() + (e.institution ? ' @ '+e.institution : '') + (e.start_year || e.end_year ? ' (' + (e.start_year||'') + '-' + (e.end_year||'') + ')' : '') ).join(\"; \") }}",
+            "Keywords": "={{ ($json[\"search_keywords\"] || []).join(\", \") }}",
+            "Summary ": "={{ $json[\"career_summary\"] || \"\" }}",
+            "Skills ": "={{ ($json[\"top_skills\"] || $json[\"raw_skills\"] || []).join(\", \") }}",
+            "Experience": "={{ $json[\"years_experience\"] || 0 }}",
+            "reprocess": "=false",
+            "review_notes": "=",
+            "reviewer": "=",
+            "review_status": "=",
+            "raw_json": "={{ JSON.stringify($json) }}",
+            "Generated At": "={{ new Date().toISOString() }}",
+            "Confidence": "={{ $json[\"confidence\"] || 0 }}",
+            "Raw Text Snippet": "={{ $json[\"raw_text_snippet\"] || ($json[\"raw_text\"] || '').slice(0,2000) }}",
+            "Projects": "={{ ($json[\"projects\"] || []).map(p=> (p.title||'') + (p.link? ' - '+p.link : '')).join(\"; \") }}",
+            "Certifications ": "={{ ($json[\"certifications\"] || []).join(\"; \") }}",
+            "Work Experience": "={{ ($json[\"experience\"] || []).map(x => (x.position||'') + (x.company? ' @ '+x.company : '') + (x.start||x.end ? ' (' + (x.start||'') + ' - ' + (x.end||'Present') + ')' : '') ).join(\"; \") }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Seniority",
+              "displayName": "Seniority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Experience",
+              "displayName": "Experience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Skills ",
+              "displayName": "Skills ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Summary ",
+              "displayName": "Summary ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Keywords",
+              "displayName": "Keywords",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Education",
+              "displayName": "Education",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Work Experience",
+              "displayName": "Work Experience",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Certifications ",
+              "displayName": "Certifications ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Projects",
+              "displayName": "Projects",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Raw Text Snippet",
+              "displayName": "Raw Text Snippet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Generated At",
+              "displayName": "Generated At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "raw_json",
+              "displayName": "raw_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "review_status",
+              "displayName": "review_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reviewer",
+              "displayName": "reviewer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "review_notes",
+              "displayName": "review_notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "reprocess",
+              "displayName": "reprocess",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1584,
+        -656
+      ],
+      "id": "d1ac9b2d-0682-4530-b2a3-2d086f98f7da",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "XzXOquDnLHbknnhg",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"review_required\",\n  \"message\": \"We could not extract enough confident data from your resume. Please update your resume or add more details (experience/skills) and try again.\",\n  \"next_steps\": \"We have queued this for manual review. You will receive an email when it's processed.\",\n  \"confidence\": {{ $json[\"confidence\"] }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1344,
+        -656
+      ],
+      "id": "777598ff-6347-413a-af29-4dc1821242d1",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"applied\",\n  \"message\": \"Resume parsed successfully and saved — we will start matching/applying to jobs now.\",\n  \"applied\": true,\n  \"confidence\": {{ $json[\"confidence\"] }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1328,
+        -240
+      ],
+      "id": "bf5d9a17-fc34-496d-8aae-831af6c57cf8",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Job Queries - Run Once\nconst c = $items(\"Append or update row in sheet\")[0].json; // or \"Code in JavaScript1\" if using earlier node\nconst toArray = v => !v ? [] : (Array.isArray(v) ? v : String(v).split(/[,;|\\/]+/).map(x=>x.trim()).filter(Boolean));\n\nconst topSkills = toArray(c.top_skills || c.raw_skills || c.skills || []).slice(0,6).join(\" \");\nconst title = (c.primary_title || c.title || \"\").trim();\nconst baseKeywords = [title, topSkills].filter(Boolean).join(\" \");\n\n// build three queries\nconst qRemote = `${baseKeywords} remote OR \"work from home\" OR WFH`;\nconst qHybrid = `${baseKeywords} hybrid OR \"partial remote\" OR \"partial work from home\" OR \"hybrid work\"`;\nconst qOnsite = `${baseKeywords} onsite OR \"on-site\" OR \"on site\" OR WFO`;\n\n// optional location param if candidate gave one\nconst location = c.preferred_location || c.location || \"\";\n\nreturn [\n  { json: { candidate: c, queryType: \"remote\", q: qRemote, location }, binary: $items(\"Append or update row in sheet\")[0].binary },\n  { json: { candidate: c, queryType: \"hybrid\",  q: qHybrid,  location }, binary: $items(\"Append or update row in sheet\")[0].binary },\n  { json: { candidate: c, queryType: \"onsite\",  q: qOnsite,  location }, binary: $items(\"Append or update row in sheet\")[0].binary }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        -240
+      ],
+      "id": "2141f868-3e07-4413-b37d-ac907cff824c",
+      "name": "Build Job Queries"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_jobs"
+            },
+            {
+              "name": "q",
+              "value": "={{$json[\"q\"]}}"
+            },
+            {
+              "name": "api_key",
+              "value": "82a5a7a9c43b711abf25e4fc57d523e3dd09a02608360cda178124f86d3160cd"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1952,
+        -432
+      ],
+      "id": "13d6daeb-8d80-468c-97c4-3394e4e1e0c3",
+      "name": "HTTP LinkedIn Jobs"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2256,
+        -336
+      ],
+      "id": "a8e14ea9-a129-442c-8ebf-3069b87a6d3b",
+      "name": "Merge Job Sources"
+    },
+    {
+      "parameters": {
+        "url": "https://upwork-jobs-api2.p.rapidapi.com/active-freelance-7d?limit=10",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{$json[\"q\"]}}"
+            },
+            {
+              "name": "location",
+              "value": "={{$json[\"location\"]}}"
+            },
+            {
+              "name": "limit",
+              "value": "=10"
+            },
+            {
+              "name": "page",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-rapidapi-host",
+              "value": "=upwork-jobs-api2.p.rapidapi.com"
+            },
+            {
+              "name": "x-rapidapi-key",
+              "value": "16a5ee5f5bmsh66f070acd9dd7bep13f94ajsn736ce9911d5d"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1952,
+        -240
+      ],
+      "id": "f440af4e-4ef4-416c-9083-d82c0e869dd8",
+      "name": "HTTP Adzuna Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Jobs - Run Once\nconst out = [];\n\nconst findList = obj => {\n  if (!obj) return [];\n  if (Array.isArray(obj)) return obj;\n  if (obj.results) return obj.results;\n  if (obj.jobs) return obj.jobs;\n  if (obj.data && Array.isArray(obj.data)) return obj.data;\n  for (const k of Object.keys(obj)) if (Array.isArray(obj[k])) return obj[k];\n  return [];\n};\n\nconst extract = job => {\n  const title = job.title || job.job_title || job.name || job.position || null;\n  const company = (job.company && (job.company.display_name || job.company.name)) || job.company || job.employer || job.client?.name || null;\n  const description = job.description || job.summary || job.snippet || job.job_description || null;\n  const link = job.redirect_url || job.redirect_url || job.apply_url || job.url || job.job_link || job.external_url || null;\n  const location = job.location?.display_name || job.location || job.city || job.region || null;\n  const source = job.source || job._source || job.provider || job.origin || null;\n  const posted_at = job.created || job.posted_at || job.published || job.date || null;\n  return { title, company, description, link, location, source, posted_at, raw: job };\n};\n\nfor (const it of items) {\n  const raw = it.json || {};\n  const list = findList(raw);\n  if (list.length) {\n    for (const j of list) {\n      out.push({ json: extract(j) });\n    }\n  } else {\n    // if item itself is a single job\n    out.push({ json: extract(raw) });\n  }\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -336
+      ],
+      "id": "b20d1cb6-20e4-4d9b-bc2c-bdfb6d01a56d",
+      "name": "Normalize merged jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Score & Filter - Robust version\n// Run Once for All Items\n\n// List of candidate-node name guesses (add any exact names you use)\nconst possibleNodeNames = [\n  \"Append or update row inBuild Job Queries sheet\",\n  \"Append or update row in Build Job Queries sheet\",\n  \"Build Job Queries\",\n  \"Append Jobs to Sheet\",\n  \"Append row in sheet\",\n  \"Build Job Queries (1)\", // add variations you might see\n];\n\n// Try to find candidate item from one of the nodes listed above\nlet candidateItem = null;\n\nfor (const name of possibleNodeNames) {\n  try {\n    const arr = $items(name);\n    if (arr && arr.length && arr[0].json) {\n      candidateItem = arr[0].json;\n      break;\n    }\n  } catch (e) {\n    // node not found -> ignore\n  }\n}\n\n// Fallback: maybe candidate is embedded in current items (e.g. merged output)\nif (!candidateItem && items && items[0] && items[0].json) {\n  // try some common properties\n  const maybe = items[0].json.candidate || items[0].json.buildQuery || items[0].json.query || items[0].json;\n  if (maybe && (maybe.Email || maybe.Keywords || maybe.Title || maybe.name)) {\n    candidateItem = maybe;\n  }\n}\n\n// Final fallback: empty candidate object so code doesn't crash\nif (!candidateItem) candidateItem = { Keywords: \"\", Title: \"\", Email: \"\" };\n\n// Normalize candidate keywords and title\nconst rawKeywords = candidateItem.Keywords || candidateItem.keywords || candidateItem.search_keywords || candidateItem.KeywordsString || \"\";\nconst candidateSkills = rawKeywords.toString().split(/[,;|\\/\\n]+/).map(s => s.trim().toLowerCase()).filter(Boolean);\nconst candidateTitle = (candidateItem.Title || candidateItem.title || candidateItem.primary_title || \"\").toLowerCase();\n\n// scoring function\nfunction score(job) {\n  const text = ((job.title||\"\") + \" \" + (job.description||\"\") + \" \" + (job.company||\"\")).toLowerCase();\n  let matches = 0;\n  for (const s of candidateSkills) if (s && text.includes(s)) matches++;\n  // title match\n  let titleMatches = 0;\n  for (const t of candidateTitle.split(/\\s+/).filter(Boolean)) if (t && text.includes(t)) titleMatches++;\n  const skillScore = candidateSkills.length ? (matches / candidateSkills.length) : 0;\n  const titleScore = candidateTitle ? Math.min(1, titleMatches / Math.max(1, candidateTitle.split(/\\s+/).length)) : 0;\n  return Math.min(1, skillScore * 0.8 + titleScore * 0.2);\n}\n\n// Process items (these are normalized job items coming from Normalize Jobs)\nconst out = items.map(it => {\n  const job = it.json || {};\n  job.matchScore = score(job);\n  // attach candidate info so later nodes have it available\n  job.candidateEmail = candidateItem.Email || candidateItem.contact_email || candidateItem.email || null;\n  job.candidateName = candidateItem.Name || candidateItem.name || null;\n  job.candidateSkills = candidateSkills.join(\", \");\n  job.candidateTitle = candidateTitle;\n  return { json: job, binary: it.binary }; // preserve binary if present\n});\n\n// Sort and limit to top N (adjust N as needed)\nout.sort((a,b) => (b.json.matchScore || 0) - (a.json.matchScore || 0));\nconst TOP_N = 20;\nreturn out.slice(0, TOP_N);\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        -336
+      ],
+      "id": "8f423c77-692f-4f87-a19e-9c5abef92aca",
+      "name": "Score & Filter"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1DkaPXXjtlYy_4G8Qza4vzhuBet5HyIbUJkwXaOft7cc",
+          "mode": "list",
+          "cachedResultName": "Append Jobs to Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DkaPXXjtlYy_4G8Qza4vzhuBet5HyIbUJkwXaOft7cc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1DkaPXXjtlYy_4G8Qza4vzhuBet5HyIbUJkwXaOft7cc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Job Title": "={{ $json[\"title\"] }}",
+            "Description": "={{ $json[\"description\"] }}",
+            "Location": "={{ $json[\"location\"] }}",
+            "Company": "={{ $json[\"company\"] }}",
+            "Match Score": "={{ $json[\"matchScore\"] || 0 }}",
+            "Source": "={{ $json[\"source\"] || \"merged\" }}",
+            "Job Link": "={{ $json[\"link\"] }}",
+            "Raw Job JSON": "={{ JSON.stringify($json[\"raw\"] || {}) }}",
+            "Work Type": "={{ $json[\"work_type\"] || \"\" }}",
+            "Generated At": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [
+            "Job Title"
+          ],
+          "schema": [
+            {
+              "id": "Job Title",
+              "displayName": "Job Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job Link",
+              "displayName": "Job Link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Match Score",
+              "displayName": "Match Score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Work Type",
+              "displayName": "Work Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Raw Job JSON",
+              "displayName": "Raw Job JSON",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Generated At",
+              "displayName": "Generated At",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2880,
+        -336
+      ],
+      "id": "6382843d-d064-434c-8e73-7beb188d5001",
+      "name": "Append or update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "XzXOquDnLHbknnhg",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 416,
+        "width": 832,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1296,
+        -464
+      ],
+      "typeVersion": 1,
+      "id": "f9f96d5a-5ec9-4b52-8f3c-384fd3d2e9b1",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "if",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "if": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        []
+      ]
+    },
+    "Respond to Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Build Job Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Job Queries": {
+      "main": [
+        [
+          {
+            "node": "HTTP LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Adzuna Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "Merge Job Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Adzuna Jobs": {
+      "main": [
+        [
+          {
+            "node": "Merge Job Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Job Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize merged jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize merged jobs": {
+      "main": [
+        [
+          {
+            "node": "Score & Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Filter": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "e3777aee-c871-4fd1-a942-255d62ceb764",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8f49f22d469b6e09b2df4cdcefc97cb4c1624176082156fb996b516c29790274"
+  },
+  "id": "U8jsVk5kycyPoCyj",
+  "tags": []
+}

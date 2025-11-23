@@ -1,0 +1,572 @@
+{
+  "name": "auto job apply",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "resume-webhook",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1152,
+        160
+      ],
+      "id": "0507775e-e55b-41ba-aceb-899cc3eee368",
+      "webhookId": "33d6e146-5a07-4832-a976-7ecc2925532f"
+    },
+    {
+      "parameters": {},
+      "name": "Extract From File (placeholder)",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        160
+      ],
+      "id": "a8aa153b-a364-4121-94bc-959a40b16aef"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Message a model (placeholder)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -752,
+        160
+      ],
+      "id": "a6577635-5c7a-4136-936d-bb81bab4a317"
+    },
+    {
+      "parameters": {},
+      "name": "Normalize Candidate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -544,
+        160
+      ],
+      "id": "84b4e8bb-599f-467b-912a-885f13feab83"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [],
+          "number": [
+            {
+              "value1": "={{$json[\"confidence\"] || 1}}",
+              "value2": 0.5
+            }
+          ],
+          "string": []
+        }
+      },
+      "name": "IF (low confidence?)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -304,
+        160
+      ],
+      "id": "6f5035fa-64a7-40f4-a171-ada2f3ac515b"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Respond LowConfidence",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        160,
+        64
+      ],
+      "id": "3dd79fb6-a782-4dd1-bbcb-1bf7ed25a3bf"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "REPLACE_WITH_SHEET_ID_CANDIDATES",
+        "range": "Candidates",
+        "options": {}
+      },
+      "name": "Append row in sheet (Candidates)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -64
+      ],
+      "id": "b59f6786-e6ee-4fe3-9ed0-e6ef59b49cd5"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        160,
+        224
+      ],
+      "id": "48c0230c-4cfd-4e0c-9f1a-066fdd75b6cf"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "REPLACE_WITH_SHEET_ID_BUILD_QUERIES",
+        "range": "Build Job Queries",
+        "options": {}
+      },
+      "name": "Append or update row inBuild Job Queries sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        272
+      ],
+      "id": "df46fa82-50e6-48ea-a2c0-c04ab23a5d3b"
+    },
+    {
+      "parameters": {},
+      "name": "Build Job Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        0,
+        384
+      ],
+      "id": "2dcbf6ca-89aa-495d-8f95-e534e2e9c736"
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": []
+        },
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "engine",
+              "value": "google_jobs"
+            },
+            {
+              "name": "q",
+              "value": "={{$json[\"queryLinkedIn\"]}}"
+            },
+            {
+              "name": "location",
+              "value": "={{$json[\"location\"] || 'remote'}}"
+            },
+            {
+              "name": "api_key",
+              "value": "REPLACE_WITH_YOUR_SERPAPI_KEY"
+            }
+          ]
+        }
+      },
+      "name": "HTTP LinkedIn Jobs (SerpAPI placeholder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        400,
+        224
+      ],
+      "id": "f3f7cd9d-86bd-4bc4-b684-9f35bf241663"
+    },
+    {
+      "parameters": {
+        "url": "https://api.adzuna.com/v1/api/jobs/IN/search/1",
+        "options": {},
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "app_id",
+              "value": "REPLACE_WITH_ADZUNA_APP_ID"
+            },
+            {
+              "name": "app_key",
+              "value": "REPLACE_WITH_ADZUNA_APP_KEY"
+            },
+            {
+              "name": "what",
+              "value": "={{$json[\"queryAdzuna\"]}}"
+            },
+            {
+              "name": "where",
+              "value": "={{$json[\"location\"] || 'remote'}}"
+            },
+            {
+              "name": "results_per_page",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "name": "HTTP Adzuna Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        400,
+        384
+      ],
+      "id": "bc696c28-3fcf-43ca-9937-95dbf4c3a129"
+    },
+    {
+      "parameters": {
+        "url": "https://REPLACE_WITH_RAPIDAPI_ENDPOINT/indeed-search",
+        "options": {},
+        "headerParametersUi": {
+          "parameter": [
+            {
+              "name": "x-rapidapi-key",
+              "value": "REPLACE_WITH_RAPIDAPI_KEY"
+            },
+            {
+              "name": "x-rapidapi-host",
+              "value": "REPLACE_WITH_RAPIDAPI_HOST"
+            }
+          ]
+        },
+        "queryParametersUi": {
+          "parameter": [
+            {
+              "name": "q",
+              "value": "={{$json[\"queryIndeed\"]}}"
+            },
+            {
+              "name": "l",
+              "value": "={{$json[\"location\"] || 'remote'}}"
+            },
+            {
+              "name": "limit",
+              "value": "25"
+            }
+          ]
+        }
+      },
+      "name": "HTTP Indeed (RapidAPI placeholder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        400,
+        512
+      ],
+      "id": "3d2accc1-968b-45c3-b815-12fe2fedd750"
+    },
+    {
+      "parameters": {
+        "mode": "passThrough"
+      },
+      "name": "Merge Job Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 1,
+      "position": [
+        656,
+        384
+      ],
+      "id": "11fb85c5-ef0c-4fa2-8abf-04c1a42e1e5c"
+    },
+    {
+      "parameters": {},
+      "name": "Normalize merged jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        960,
+        384
+      ],
+      "id": "a2afbfd9-ee07-4c7b-9738-5781081bd77e"
+    },
+    {
+      "parameters": {},
+      "name": "Score & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        384
+      ],
+      "id": "69b01b42-4112-4c86-9070-cb7dcdefd6dc"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Generate Cover Letter (placeholder)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        1552,
+        384
+      ],
+      "id": "783fd28e-ef25-4351-aa42-c88bc5d3409f"
+    },
+    {
+      "parameters": {
+        "fromEmail": "REPLACE_WITH_YOUR_SENDER_EMAIL",
+        "toEmail": "={{$json[\"candidateEmailForHR\"] || $json[\"hr_email\"] || 'REPLACE_HR_EMAIL'}}",
+        "subject": "Application: {{$json[\"title\"]}} - {{$json[\"company\"]}}",
+        "text": "={{$json[\"generated_cover_letter\"] || 'Please see attached resume.'}}\n\nCandidate Email: {{$json[\"candidateEmail\"]}}",
+        "attachments": [
+          {
+            "binaryPropertyName": "resume"
+          }
+        ],
+        "options": {}
+      },
+      "name": "Send Email to HR (apply)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1856,
+        384
+      ],
+      "id": "5ab6f223-7f58-43cd-aa17-f721e022c2fb"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "REPLACE_WITH_SHEET_ID_APPLICATIONS",
+        "range": "Applications",
+        "options": {}
+      },
+      "name": "Append Applications row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        384
+      ],
+      "id": "0cc9af20-2e83-4b94-9faa-4745453b5753"
+    },
+    {
+      "parameters": {
+        "fromEmail": "REPLACE_WITH_YOUR_SENDER_EMAIL",
+        "toEmail": "={{$json[\"contact_email\"] || $json[\"candidateEmail\"]}}",
+        "subject": "Your applications summary",
+        "text": "Hi {{$json[\"name\"] || $json[\"candidateName\"]}},\\n\\nWe applied to {{$json[\"applied_count\"] || 0}} jobs for you. See the Applications sheet for details.\\n\\nRegards,\\nAutomated Job System",
+        "options": {}
+      },
+      "name": "Email Candidate Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        560
+      ],
+      "id": "6835830f-5082-4389-9a73-5ad0b90e1f2e"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract From File (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract From File (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Message a model (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Normalize Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Candidate": {
+      "main": [
+        [
+          {
+            "node": "IF (low confidence?)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append or update row inBuild Job Queries sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF (low confidence?)": {
+      "main": [
+        [
+          {
+            "node": "Respond LowConfidence",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Success": {
+      "main": [
+        [
+          {
+            "node": "Append or update row inBuild Job Queries sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row inBuild Job Queries sheet": {
+      "main": [
+        [
+          {
+            "node": "Build Job Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Job Queries": {
+      "main": [
+        [
+          {
+            "node": "HTTP LinkedIn Jobs (SerpAPI placeholder)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Adzuna Jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Indeed (RapidAPI placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP LinkedIn Jobs (SerpAPI placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Merge Job Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Adzuna Jobs": {
+      "main": [
+        [
+          {
+            "node": "Merge Job Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Job Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize merged jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize merged jobs": {
+      "main": [
+        [
+          {
+            "node": "Score & Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score & Filter": {
+      "main": [
+        [
+          {
+            "node": "Generate Cover Letter (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Cover Letter (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Send Email to HR (apply)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append Applications row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Applications row": {
+      "main": [
+        [
+          {
+            "node": "Email Candidate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "89d2578a-0145-4327-a3d8-b47559299885",
+  "meta": {
+    "instanceId": "8f49f22d469b6e09b2df4cdcefc97cb4c1624176082156fb996b516c29790274"
+  },
+  "id": "0FHDmbW7qoCS4mF2",
+  "tags": []
+}
